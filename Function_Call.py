@@ -30,7 +30,7 @@ def run_conversation():
     #Step1:send the conversation and available functions to GPT
     messages = [
         {"role": "system", "content": "Don't make assumptions about what values to plug into functions. Ask for clarification if a user request is ambiguous."},
-        {"role": "user", "content": "What's the weather like in Beijing?"}
+        {"role": "user", "content": "What's the weather like in Dalian over the next 5 days?"}
         ]
 
     functions = [
@@ -107,7 +107,7 @@ def run_conversation():
                  unit=function_args.get("unit"),
                  num_days=function_args.get("num_days")
              )
-
+        print(function_response)  #debug printer
         # Step 4: send the info on the function call and function response to GPT
         #messages.append(response_message)  # extend conversation with assistant's reply
         messages.append(
