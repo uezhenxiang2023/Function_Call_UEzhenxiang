@@ -124,8 +124,8 @@ def query_message(
 def run_function_calling():
     # Step1: send the conversation and available functions to GPT
     messages = [
-        {"role": "system", "content": "你是非常聪明的人工智能助手，旨在帮助用户解答问题。回答问题时，请跟客户提问所用的语言保持一致。比如用户用中文提问，你也用中文回答。"},
-        {"role": "user", "content": "What's the weather like in Boston over the next 3 days?"}
+    
+        {"role": "user", "content": "What is the score for Qatar 2022 World Cup final?"}
     ]
     functions = [
         {
@@ -134,12 +134,12 @@ def run_function_calling():
             "parameters": {
                 "type": "object",
                 "properties": {
-                    "query": {
+                    "answer": {
                         "type": "string",
                         "description": "Questions user want assistant to answer using embeddings",
                     },
                 },
-                "required": ["query"],
+                "required": ["answer"],
             },
         },
         {
@@ -202,7 +202,7 @@ def run_function_calling():
         fuction_to_call = available_functions[function_name]
         function_args = json.loads(response_message["function_call"]["arguments"])
         if function_name =="ask":
-           function_response = fuction_to_call(query=function_args.get("query"))
+           function_response = fuction_to_call(query=function_args.get("answer"))
         elif  function_name =="get_current_weather":
               function_response = fuction_to_call(
                 location=function_args.get("location"),
@@ -220,8 +220,9 @@ def run_function_calling():
             "role": "function",
             "name": function_name,
             "content": function_response,
-        } #return function_call_message
-        print(function_call_message)
+        } 
+        #return function_call_message
+
         messages.append(function_call_message)  # extend conversation with function response
         second_response = openai.ChatCompletion.create(
             model="gpt-3.5-turbo-0613",
@@ -232,5 +233,4 @@ def run_function_calling():
 
     return second_response["choices"][0]["message"]["content"]
     
-
 print(run_function_calling())
