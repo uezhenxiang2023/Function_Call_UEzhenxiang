@@ -121,11 +121,11 @@ def query_message(
             message += next_article
     return message + question
 
-def run_conversation():
+def run_function_calling():
     # Step1: send the conversation and available functions to GPT
     messages = [
         {"role": "system", "content": "你是非常聪明的人工智能助手，旨在帮助用户解答问题。回答问题时，请跟客户提问所用的语言保持一致。比如用户用中文提问，你也用中文回答。"},
-        {"role": "user", "content": "What is the Qatar World Cup final score??"}
+        {"role": "user", "content": "What's the weather like in Boston over the next 3 days?"}
     ]
     functions = [
         {
@@ -216,14 +216,13 @@ def run_conversation():
               )
 
         # Step 4: send the info on the function call and function response to GPT
-        messages.append(response_message)  # extend conversation with assistant's reply
-        messages.append(
-            {
-                "role": "function",
-                "name": function_name,
-                "content": function_response,
-            }
-        )  # extend conversation with function response
+        function_call_message={
+            "role": "function",
+            "name": function_name,
+            "content": function_response,
+        } #return function_call_message
+        print(function_call_message)
+        messages.append(function_call_message)  # extend conversation with function response
         second_response = openai.ChatCompletion.create(
             model="gpt-3.5-turbo-0613",
             messages=messages,
@@ -232,5 +231,6 @@ def run_conversation():
         second_response=response
 
     return second_response["choices"][0]["message"]["content"]
+    
 
-print(run_conversation())
+print(run_function_calling())
