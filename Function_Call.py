@@ -121,16 +121,16 @@ def query_message(
             message += next_article
     return message + question
 
-def run_function_calling():
+def run_function_calling(query:str):
     # Step1: send the conversation and available functions to GPT
     messages = [
     
-        {"role": "user", "content": "What is the score for Qatar 2022 World Cup final?"}
+        {"role": "user", "content": query}
     ]
     functions = [
         {
             "name": "ask",
-            "description": "Answers a query using GPT and a dataframe of relevant texts and embeddings",
+            "description": "Answer a query using GPT and a dataframe of relevant texts and embeddings",
             "parameters": {
                 "type": "object",
                 "properties": {
@@ -221,8 +221,8 @@ def run_function_calling():
             "name": function_name,
             "content": function_response,
         } 
-        #return function_call_message
-
+        return function_call_message
+"""
         messages.append(function_call_message)  # extend conversation with function response
         second_response = openai.ChatCompletion.create(
             model="gpt-3.5-turbo-0613",
@@ -232,5 +232,6 @@ def run_function_calling():
         second_response=response
 
     return second_response["choices"][0]["message"]["content"]
-    
-print(run_function_calling())
+"""
+user_query = "2022卡塔尔世界杯最佳射手是谁？"
+print(run_function_calling(user_query))
