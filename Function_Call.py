@@ -10,10 +10,10 @@ openai.api_key = os.getenv("OPENAI_API_KEY")
 GPT_MODEL = "gpt-3.5-turbo-0613"
 
 class FunctionRunner:
-    def __init__(self, api_key, model, embeddings_path):
+    def __init__(self, api_key, embeddings_path):
         openai.api_key = api_key
         self.EMBEDDING_MODEL = "text-embedding-ada-002"
-        self.GPT_MODEL = model
+        self.GPT_MODEL = GPT_MODEL
         self.df = None
         self.embeddings_path = embeddings_path
 
@@ -77,7 +77,7 @@ class FunctionRunner:
             temperature=0
         )
         response_message = response["choices"][0]["message"]["content"]
-        return response_message 
+        return response 
 
     def query_message(self, query: str, df: pd.DataFrame, token_budget: int) -> str:
         strings, relatednesses = self.strings_ranked_by_relatedness(query, df)
@@ -96,7 +96,10 @@ class FunctionRunner:
         return message + question
 
     def run_function_calling(self, query:str):
-        messages = [{"role": "user", "content": query}]
+        messages = [
+            {"role": "system", "content": "You are smart and helpful AI assistant.You only use the functions you have been provided with once the answer cannot be found in your training data."},
+            {"role": "user", "content": query},
+            ]
         functions = [
         {
             "name": "ask",
@@ -171,26 +174,41 @@ class FunctionRunner:
             function_args = json.loads(response_message["function_call"]["arguments"])
             if function_name =="ask":
                function_response = function_to_call(query=function_args.get("answer"))
-            elif  function_name =="get_current_weather":
-                  function_response = function_to_call(
-                    location=function_args.get("location"),
-                    unit=function_args.get("unit")
-                  )
-            elif  function_name =="get_n_weather_forecast":
-                  function_response = function_to_call(
+               return function_response
+            elif function_name == "get_current_weather":
+                function_response = function_to_call(
                     location=function_args.get("location"),
                     unit=function_args.get("unit"),
-                    num_days=function_args.get("num_days"),
-                  )
-            function_call_message={
-                "role": "function",
-                "name": function_name,
-                "content": function_response,
-            }
-            messages.append(function_call_message) 
-            return messages
+                )
+                function_call_message = {
+                    "role": "function",
+                    "name": function_name,
+                    "content": function_response,
+                    }
+                messages.append(function_call_message)
+                return messages
+            elif function_name == "get_n_weather_forecast":
+                function_response = function_to_call(
+                    location=function_args.get("location"),
+                    unit=function_args.get("unit"),
+                    num_days=function_args.get("num_days")
+                )
+                function_call_message = {
+                    "role": "function",
+                    "name": function_name,
+                    "content": function_response,
+                    }
+                messages.append(function_call_message)
+                return messages
+        
+            # Test section
+            messages.append(function_call_message) # extend conversation with function response
+            second_response = openai.ChatCompletion.create(
+            model="gpt-3.5-turbo-0613",
+            messages=messages,
+            )  # get a new response from GPT where it can see the function response
 
 # Now you can use the class to call the function
-runner = FunctionRunner(openai.api_key,GPT_MODEL,"/Volumes/work/Project/AIGC/OpenAI/Function_Call/data/FIFA_World_Cup_2022.csv")
-result=runner.run_function_calling("What's the weather like in Boston over the next 3 days?")
+runner = FunctionRunner(openai.api_key,"/Volumes/work/Project/AIGC/OpenAI/Function_Call/data/FIFA_World_Cup_2022.csv")
+result=runner.run_function_calling("北京未来2天的天气怎么样?")
 print(result)
