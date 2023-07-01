@@ -103,16 +103,16 @@ class FunctionRunner:
         functions = [
         {
             "name": "ask",
-            "description": "Answer a query using GPT and a dataframe of relevant texts and embeddings",
+            "description": "Answer a query related to the 2022 World Cup in Qatar using GPT and a dataframe of relevant texts and embeddings",
             "parameters": {
                 "type": "object",
                 "properties": {
-                    "answer": {
+                    "question": {
                         "type": "string",
                         "description": "Questions user want assistant to answer using embeddings",
                     },
                 },
-                "required": ["answer"],
+                "required": ["question"],
             },
         },
         {
@@ -173,7 +173,7 @@ class FunctionRunner:
             function_to_call = available_functions[function_name]
             function_args = json.loads(response_message["function_call"]["arguments"])
             if function_name =="ask":
-               function_response = function_to_call(query=function_args.get("answer"))
+               function_response = function_to_call(query=function_args.get("question"))
                return function_response
             elif function_name == "get_current_weather":
                 function_response = function_to_call(
