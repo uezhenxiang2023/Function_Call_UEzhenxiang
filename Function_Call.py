@@ -5,9 +5,61 @@ import tiktoken
 from scipy import spatial
 import os
 import json
+import pinecone
+from tqdm.auto import tqdm
 
 openai.api_key = os.getenv("OPENAI_API_KEY")
 GPT_MODEL = "gpt-3.5-turbo-0613-16k"
+
+# initialize connection to pinecone
+pinecone.init(
+    api_key="b4f05738-8211-4414-a372-d0867ef33c10",
+    environment="northamerica-northeast1-gcp" 
+)
+data = pd.read_csv("/Volumes/work/Project/AIGC/OpenAI/Function_Call/data/FIFA_World_Cup_2022.csv")
+
+new_index_name = 'fifa-world-cup-2022-qatar'
+
+
+old_index_name = 'wikipedia-openai'
+res=openai.Embedding.create(
+    input=[
+        "Sample document text goes here",
+        "there will be several phrases in each batch"
+    ],
+    model="text-embedding-ada-002"
+)
+
+# Check whether the index with the old name already exists - if so, delete it
+if old_index_name in pinecone.list_indexes():
+    pinecone.delete_index(old_index_name)
+    
+# Creates new index
+if new_index_name not in pinecone.list_indexes():
+    pinecone.create_index(
+            new_index_name,
+            dimension=len(res['data'][0]['embedding'])
+        )
+
+# connect to index
+index = pinecone.Index(new_index_name)
+
+# view index stats
+index_stats=index.describe_index_stats()
+print(index_stats)
+
+
+# Iterate over the data and upload vectors in a loop
+for idx in tqdm(range(len(data)), desc="Uploading vectors"):
+    text = data.loc[idx, "text"]
+    embedding = ast.literal_eval(data.loc[idx, "embedding"])
+    
+    # Upsert vector and text to Pinecone index
+    index.upsert([(str(idx), embedding, {'text': text})])
+
+print("Data inserted into Pinecone index.")
+
+
 
 class FunctionRunner:
     def __init__(self, api_key, embeddings_path):
