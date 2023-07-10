@@ -7,67 +7,29 @@ import os
 import json
 import pinecone
 from tqdm.auto import tqdm
+import time
+
+start_time = time.time()
 
 openai.api_key = os.getenv("OPENAI_API_KEY")
-GPT_MODEL = "gpt-3.5-turbo-0613-16k"
-
-# initialize connection to pinecone
-pinecone.init(
-    api_key="b4f05738-8211-4414-a372-d0867ef33c10",
-    environment="northamerica-northeast1-gcp" 
-)
-data = pd.read_csv("/Volumes/work/Project/AIGC/OpenAI/Function_Call/data/FIFA_World_Cup_2022.csv")
-
-new_index_name = 'fifa-world-cup-2022-qatar'
+csv_path="/Volumes/work/Project/AIGC/OpenAI/Function_Call/data/FIFA_World_Cup_2022.csv"
 
 
-old_index_name = 'wikipedia-openai'
-res=openai.Embedding.create(
-    input=[
-        "Sample document text goes here",
-        "there will be several phrases in each batch"
-    ],
-    model="text-embedding-ada-002"
-)
+pinecone_status=False
+pinecone_api_key = "b4f05738-8211-4414-a372-d0867ef33c10"
+pinecone_env = "northamerica-northeast1-gcp" 
+pinecone_new_index_name = 'qatar-2022-fifa-world-cup'
 
-# Check whether the index with the old name already exists - if so, delete it
-if old_index_name in pinecone.list_indexes():
-    pinecone.delete_index(old_index_name)
-    
-# Creates new index
-if new_index_name not in pinecone.list_indexes():
-    pinecone.create_index(
-            new_index_name,
-            dimension=len(res['data'][0]['embedding'])
-        )
-
-# connect to index
-index = pinecone.Index(new_index_name)
-
-# view index stats
-index_stats=index.describe_index_stats()
-print(index_stats)
-
-
-# Iterate over the data and upload vectors in a loop
-for idx in tqdm(range(len(data)), desc="Uploading vectors"):
-    text = data.loc[idx, "text"]
-    embedding = ast.literal_eval(data.loc[idx, "embedding"])
-    
-    # Upsert vector and text to Pinecone index
-    index.upsert([(str(idx), embedding, {'text': text})])
-
-print("Data inserted into Pinecone index.")
-
-
+GPT_MODEL = "gpt-3.5-turbo-16k-0613"
 
 class FunctionRunner:
-    def __init__(self, api_key, embeddings_path):
+    def __init__(self, api_key, pinecone:bool, embeddings_path=None):
         openai.api_key = api_key
         self.EMBEDDING_MODEL = "text-embedding-ada-002"
         self.GPT_MODEL = GPT_MODEL
         self.df = None
         self.embeddings_path = embeddings_path
+        self.pinecone=pinecone
 
     def get_current_weather(self, location, unit):
         weather_info = {
@@ -86,6 +48,13 @@ class FunctionRunner:
             "forecast": ["rainy"],
         }
         return json.dumps(forecast_info)
+    
+    def ask(self, query: str) -> str:
+        pinecone=self.pinecone
+        if pinecone:
+            return self.ask_pinecone(query)
+        else:
+            return self.ask_openai(query)
 
     def strings_ranked_by_relatedness(
         self,
@@ -111,7 +80,7 @@ class FunctionRunner:
         encoding = tiktoken.encoding_for_model(model)
         return len(encoding.encode(text))
 
-    def ask(self, query: str, csv_path: str = None, df_cache: pd.DataFrame = None, token_budget: int = 4096 - 500) -> str:
+    def ask_openai(self, query: str, csv_path: str = None, df_cache: pd.DataFrame = None, token_budget: int = 4096 - 500) -> str:
         if csv_path is None:
             csv_path = self.embeddings_path
             
@@ -146,6 +115,62 @@ class FunctionRunner:
             else:
                 message += next_article
         return message + question
+    
+    def ask_pinecone(self,query: str,limit = 3750):
+        pinecone.init(
+            api_key = pinecone_api_key,
+            environment = pinecone_env
+        )
+
+        # connect to index
+        index = pinecone.Index(pinecone_new_index_name)
+
+        res = openai.Embedding.create(
+            input=[query],
+            model=self.EMBEDDING_MODEL
+        )
+
+        # retrieve from Pinecone
+        xq = res['data'][0]['embedding']
+
+        # get relevant contexts
+        res = index.query(xq, top_k=100, include_metadata=True)
+        contexts = [
+            x['metadata']['text'] for x in res['matches']
+        ]
+        # build our prompt with the retrieved contexts included
+        prompt_start = (
+            "Answer the question based on the context below.\n\n"+
+            "Context:\n"
+        )
+        prompt_end = (
+            f"\n\nQuestion: {query}"
+        )
+        # append contexts until hitting limit
+        for i in range(1, len(contexts)):
+            if len("\n\n---\n\n".join(contexts[:i])) >= limit:
+                prompt = (
+                    prompt_start +
+                    "\n\n---\n\n".join(contexts[:i]) +
+                    prompt_end
+                )
+                break
+            elif i == len(contexts)-1:
+                prompt = (
+                    prompt_start +
+                    "\n\n---\n\n".join(contexts) +
+                    prompt_end
+                )
+        response=openai.ChatCompletion.create(
+            model=self.GPT_MODEL,
+            messages=[
+                {"role": "system", "content": "You are a helpful assistant."},
+                {"role": "user", "content": prompt},
+            ],
+            temperature=0
+        )
+        response_message = response["choices"][0]["message"]["content"]
+        return response
 
     def run_function_calling(self, query:str):
         messages = [
@@ -261,6 +286,10 @@ class FunctionRunner:
             )  # get a new response from GPT where it can see the function response
 
 # Now you can use the class to call the function
-runner = FunctionRunner(openai.api_key,"/Volumes/work/Project/AIGC/OpenAI/Function_Call/data/FIFA_World_Cup_2022.csv")
-result=runner.run_function_calling("北京未来2天的天气怎么样?")
+runner = FunctionRunner(openai.api_key,pinecone_status,csv_path)
+result=runner.run_function_calling("Who is the top scorer of the 2022 Qatar World Cup?")
 print(result)
+
+end_time=time.time()
+execution_time = end_time - start_time
+print(execution_time)
