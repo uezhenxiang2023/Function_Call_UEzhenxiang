@@ -1,36 +1,81 @@
-import ast
-import openai
-import pandas as pd
-import tiktoken
-from scipy import spatial
 import os
-import json
-import pinecone
-from tqdm.auto import tqdm
 import time
+import json
+import ast
+import pandas as pd
+from scipy import spatial
+from tqdm.auto import tqdm
 
+import openai
+import tiktoken
+import pinecone,chromadb
+from chromadb.utils.embedding_functions import OpenAIEmbeddingFunction
+
+from langchain.document_loaders import PyPDFLoader
+from langchain.text_splitter import(
+    CharacterTextSplitter,
+    RecursiveCharacterTextSplitter,
+    TokenTextSplitter
+)
+from langchain.embeddings.openai import OpenAIEmbeddings
+from langchain.vectorstores import Chroma,Pinecone
+from langchain.llms import OpenAI
+from langchain.chat_models import ChatOpenAI
+from langchain.chains import (
+    RetrievalQA,
+    LLMChain,
+    ConversationChain,
+    ConversationalRetrievalChain
+    )
+from langchain.schema import (
+    SystemMessage,
+    HumanMessage,
+    AIMessage,
+    FunctionMessage
+)
+from langchain.prompts import (
+    PromptTemplate,
+    ChatPromptTemplate,
+    MessagesPlaceholder,
+    SystemMessagePromptTemplate,
+    HumanMessagePromptTemplate,
+    AIMessagePromptTemplate
+    )
+
+from langchain.memory import (
+    ConversationBufferMemory,
+    ConversationBufferWindowMemory,
+    ConversationSummaryMemory
+    )
+
+from langchain.callbacks import get_openai_callback
 start_time = time.time()
 
 openai.api_key = os.getenv("OPENAI_API_KEY")
-csv_path="/Volumes/work/Project/AIGC/OpenAI/Function_Call/data/FIFA_World_Cup_2022.csv"
-
-
-pinecone_status=False
-pinecone_api_key = "b4f05738-8211-4414-a372-d0867ef33c10"
-pinecone_env = "northamerica-northeast1-gcp" 
-pinecone_new_index_name = 'qatar-2022-fifa-world-cup'
-
 GPT_MODEL = "gpt-3.5-turbo-16k-0613"
+EMBEDDING_MODEL = "text-embedding-ada-002"
+csv_path = "/Volumes/work/Project/AIGC/OpenAI/Function_Call/data/FIFA_World_Cup_2022.csv"
+persist_directory = '/Volumes/work/Project/AIGC/Langchain/docs/chroma_22b/'
+
+
+pinecone_status=True
+pinecone_api_key = os.getenv("PINECONE_API_KEY")
+pinecone_env = os.getenv("PINECONE_ENV") 
+pinecone_new_index_name = 'cross-the-great-river'
+
+
 
 class FunctionRunner:
-    def __init__(self, api_key, pinecone:bool, embeddings_path=None):
+    def __init__(self, api_key, frame: str = None, vectorstore: str = None):
         openai.api_key = api_key
-        self.EMBEDDING_MODEL = "text-embedding-ada-002"
+        self.api_key = api_key
+        self.EMBEDDING_MODEL = EMBEDDING_MODEL
         self.GPT_MODEL = GPT_MODEL
+        self.FRAMEWORK = frame
+        self.VECTORSTORES = vectorstore
         self.df = None
-        self.embeddings_path = embeddings_path
-        self.pinecone=pinecone
-
+    
+    # prepare three candidate functions for openai's function calling.
     def get_current_weather(self, location, unit):
         weather_info = {
             "location": location,
@@ -50,11 +95,89 @@ class FunctionRunner:
         return json.dumps(forecast_info)
     
     def ask(self, query: str) -> str:
-        pinecone=self.pinecone
-        if pinecone:
-            return self.ask_pinecone(query)
+        if self.FRAMEWORK == 'langchain':
+            return self.langchain_ask(query)
+        elif self.FRAMEWORK == 'llamaindex':
+            return self.llamaindex_ask
         else:
+            return self.raw_ask(query)
+        
+    def raw_ask(self,query: str) -> str:
+        if self.VECTORSTORES == 'pinecone':
+            return self.ask_pinecone(query)
+        elif self.VECTORSTORES == 'chroma':
+            return self.ask_chroma(query)
+        elif self.VECTORSTORES is None:
             return self.ask_openai(query)
+        else:
+            raise ValueError('Invalid vectorstores value')
+        
+    def langchain_ask(self,query: str) -> str:
+        embedding = OpenAIEmbeddings()
+        chat_model = ChatOpenAI(model=self.GPT_MODEL,temperature=0,max_tokens=256)
+        memory = ConversationBufferMemory(memory_key='chat_history',return_messages=True)
+        if self.VECTORSTORES == 'pinecone':
+            pinecone.init(
+                api_key=pinecone_api_key,
+                environment=pinecone_env
+                )
+            index = pinecone.Index(pinecone_new_index_name)
+            vectordb = Pinecone(index,embedding.embed_query,'text')
+        elif self.VECTORSTORES == 'chroma':
+            vectordb = Chroma(
+                persist_directory=persist_directory,
+                embedding_function=embedding
+                )
+        retriever = vectordb.as_retriever(
+            search_tpye='similarity',
+            search_kwargs={'k':1}
+            )
+        qa_chain = ConversationalRetrievalChain.from_llm(
+            llm=chat_model,
+            retriever=retriever,
+            memory=memory
+            )
+        with get_openai_callback() as cb:
+            answer = qa_chain(query)
+
+        content = answer['answer']
+        prompt_tokens = cb.prompt_tokens
+        completion_tokens = cb.completion_tokens
+        total_tokens = cb.total_tokens
+
+        response = {
+            "choices": [{
+                "index": 0,
+                "message": {
+                    "role": "assistant",
+                    "content": content,
+                },
+            }],
+            "usage": {
+                "prompt_tokens": prompt_tokens,
+                "completion_tokens": completion_tokens,
+                "total_tokens": total_tokens
+            }
+        }
+        print(response["choices"][0]["message"]["content"])
+        """ # candidated response with ChatCompletion
+            messages = [
+                {
+                    'role': 'system',
+                    'content': '你是非常聪明的复读机助手，可以精准的重复用户输入的内容。即使用户输入的是疑问句，你仍然重复该疑问句，而不是给出答案。'
+                },
+                {
+                    'role': 'user',
+                    'content': content
+                }
+                ]
+            response = openai.ChatCompletion.create(
+                model = 'gpt-3.5-turbo',
+                messages=messages,
+                temperature=0,
+                max_tokens=256
+            )"""
+        return response
 
     def strings_ranked_by_relatedness(
         self,
@@ -79,10 +202,26 @@ class FunctionRunner:
     def num_tokens(self, text: str, model: str) -> int:
         encoding = tiktoken.encoding_for_model(model)
         return len(encoding.encode(text))
+    
+    def query_message(self, query: str, df: pd.DataFrame, token_budget: int) -> str:
+        strings, relatednesses = self.strings_ranked_by_relatedness(query, df)
+        introduction = 'You are helpful AI assistant, If the answer cannot be found in your training data, Use the below articles to answer the subsequent question. "'
+        question = f"\n\nQuestion: {query}"
+        message = introduction
+        for string in strings:
+            next_article = f'\n\nWikipedia article section:\n"""\n{string}\n"""'
+            if (
+                self.num_tokens(message + next_article + question, model=self.GPT_MODEL)
+                > token_budget
+            ):
+                break
+            else:
+                message += next_article
+        return message + question
 
     def ask_openai(self, query: str, csv_path: str = None, df_cache: pd.DataFrame = None, token_budget: int = 4096 - 500) -> str:
         if csv_path is None:
-            csv_path = self.embeddings_path
+            csv_path = csv_path
             
         if df_cache is None:
             self.df = pd.read_csv(csv_path)
@@ -99,24 +238,9 @@ class FunctionRunner:
         )
         response_message = response["choices"][0]["message"]["content"]
         return response 
-
-    def query_message(self, query: str, df: pd.DataFrame, token_budget: int) -> str:
-        strings, relatednesses = self.strings_ranked_by_relatedness(query, df)
-        introduction = 'You are helpful AI assistant, If the answer cannot be found in your training data, Use the below articles to answer the subsequent question. "'
-        question = f"\n\nQuestion: {query}"
-        message = introduction
-        for string in strings:
-            next_article = f'\n\nWikipedia article section:\n"""\n{string}\n"""'
-            if (
-                self.num_tokens(message + next_article + question, model=self.GPT_MODEL)
-                > token_budget
-            ):
-                break
-            else:
-                message += next_article
-        return message + question
     
-    def ask_pinecone(self,query: str,limit = 3750):
+    
+    def ask_pinecone(self,query: str,limit = 10000):
         pinecone.init(
             api_key = pinecone_api_key,
             environment = pinecone_env
@@ -134,7 +258,7 @@ class FunctionRunner:
         xq = res['data'][0]['embedding']
 
         # get relevant contexts
-        res = index.query(xq, top_k=100, include_metadata=True)
+        res = index.query(xq, top_k=2, include_metadata=True)
         contexts = [
             x['metadata']['text'] for x in res['matches']
         ]
@@ -171,6 +295,25 @@ class FunctionRunner:
         )
         response_message = response["choices"][0]["message"]["content"]
         return response
+    
+    """def ask_chroma(self,query: str) -> str:
+        chroma_client = chromadb.Client() #Get Chroma Client
+        embedding_function = OpenAIEmbeddingFunction(api_key=self.api_key,model_name=EMBEDDING_MODEL)
+        collection = chroma_client.create_collection(name='my_collection') # Collection are where you'll store your embeddings,documents,and any additional metadata.
+        
+        # Chroma will store your text,and handle tokenization,embedding,and indexing automatically.
+        collection.add(
+            embeddings=[[1.2,2.3,4.5],[6.7,8.2,9.2]] #you can load embeddings generated by yourself.
+            documents=['This is a document','This is another document'],
+            metadatas=[{'source': 'my_source'},{'source': 'my_source'}],
+            ids=['id1','id2']
+            )
+        # You can query the collection with a list of query texts.and Chroma will return the n most similar results
+        results = collection.query(
+            query_texts=[query],
+            n_results=2
+            )
+        return results"""
 
     def run_function_calling(self, query:str):
         messages = [
@@ -180,7 +323,7 @@ class FunctionRunner:
         functions = [
         {
             "name": "ask",
-            "description": "Answer a query related to the 2022 World Cup in Qatar using GPT and a dataframe of relevant texts and embeddings",
+            "description": "Answer a query related to the texts and embeddings in vectorstore",
             "parameters": {
                 "type": "object",
                 "properties": {
@@ -286,8 +429,8 @@ class FunctionRunner:
             )  # get a new response from GPT where it can see the function response
 
 # Now you can use the class to call the function
-runner = FunctionRunner(openai.api_key,pinecone_status,csv_path)
-result=runner.run_function_calling("Who is the top scorer of the 2022 Qatar World Cup?")
+runner = FunctionRunner(openai.api_key,frame='langchain',vectorstore='chroma')
+result=runner.run_function_calling("CROSS THE GREAT RIVER的编剧是谁?")
 print(result)
 
 end_time=time.time()
