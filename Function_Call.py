@@ -51,7 +51,7 @@ from langchain.callbacks import get_openai_callback
 start_time = time.time()
 
 openai.api_key = os.getenv("OPENAI_API_KEY")
-GPT_MODEL = "gpt-3.5-turbo-16k-0613"
+GPT_MODEL = "gpt-3.5-turbo-16k"
 EMBEDDING_MODEL = "text-embedding-ada-002"
 csv_path = "/Volumes/work/Project/AIGC/OpenAI/Function_Call/data/FIFA_World_Cup_2022.csv"
 persist_directory = '/Volumes/work/Project/AIGC/Langchain/docs/chroma_22b/'
