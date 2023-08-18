@@ -412,7 +412,7 @@ class FunctionRunner:
 
 # Now you can use the class to call the function
 runner = FunctionRunner(openai.api_key,frame='langchain',vectorstore='chroma')
-result=runner.run_function_calling("CROSS THE GREAT RIVER的编剧是谁?")
+result=runner.run_function_calling("CROSS THE GREAT RIVER的原名是什么?")
 print(result)
 
 end_time=time.time()
