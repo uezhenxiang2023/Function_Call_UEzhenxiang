@@ -222,7 +222,7 @@ class FunctionRunner:
         return response 
     
     
-    def ask_pinecone(self,query: str,limit = 10000):
+    def ask_pinecone(self,query: str,limit = 12000):
         pinecone.init(
             api_key = pinecone_api_key,
             environment = pinecone_env
