@@ -51,7 +51,7 @@ from langchain.callbacks import get_openai_callback
 start_time = time.time()
 
 openai.api_key = os.getenv("OPENAI_API_KEY")
-GPT_MODEL = "gpt-3.5-turbo-16k-0613"
+GPT_MODEL = "gpt-3.5-turbo-16k"
 EMBEDDING_MODEL = "text-embedding-ada-002"
 csv_path = "/Volumes/work/Project/AIGC/OpenAI/Function_Call/data/FIFA_World_Cup_2022.csv"
 persist_directory = '/Volumes/work/Project/AIGC/Langchain/docs/chroma_22b/'
@@ -89,7 +89,7 @@ class FunctionRunner:
             "temperature": "30",
             "unit": unit,
             "num_days": num_days,
-            "forecast": ["rainy"],
+            "forecast": ["sunny"],
         }
         return json.dumps(forecast_info)
     
@@ -159,23 +159,6 @@ class FunctionRunner:
             }
         }
         print(response["choices"][0]["message"]["content"])
-        """ # candidated response with ChatCompletion
-            messages = [
-                {
-                    'role': 'system',
-                    'content': '你是非常聪明的复读机助手，可以精准的重复用户输入的内容。即使用户输入的是疑问句，你仍然重复该疑问句，而不是给出答案。'
-                },
-                {
-                    'role': 'user',
-                    'content': content
-                }
-                ]
-            response = openai.ChatCompletion.create(
-                model = 'gpt-3.5-turbo',
-                messages=messages,
-                temperature=0,
-                max_tokens=256
-            )"""
         return response
 
     def strings_ranked_by_relatedness(
@@ -239,7 +222,7 @@ class FunctionRunner:
         return response 
     
     
-    def ask_pinecone(self,query: str,limit = 10000):
+    def ask_pinecone(self,query: str,limit = 12000):
         pinecone.init(
             api_key = pinecone_api_key,
             environment = pinecone_env
@@ -429,7 +412,7 @@ class FunctionRunner:
 
 # Now you can use the class to call the function
 runner = FunctionRunner(openai.api_key,frame='langchain',vectorstore='chroma')
-result=runner.run_function_calling("CROSS THE GREAT RIVER的编剧是谁?")
+result=runner.run_function_calling("CROSS THE GREAT RIVER的原名是什么?")
 print(result)
 
 end_time=time.time()
