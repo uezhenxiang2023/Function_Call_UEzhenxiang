@@ -159,23 +159,6 @@ class FunctionRunner:
             }
         }
         print(response["choices"][0]["message"]["content"])
-        """ # candidated response with ChatCompletion
-            messages = [
-                {
-                    'role': 'system',
-                    'content': '你是非常聪明的复读机助手，可以精准的重复用户输入的内容。即使用户输入的是疑问句，你仍然重复该疑问句，而不是给出答案。'
-                },
-                {
-                    'role': 'user',
-                    'content': content
-                }
-                ]
-            response = openai.ChatCompletion.create(
-                model = 'gpt-3.5-turbo',
-                messages=messages,
-                temperature=0,
-                max_tokens=256
-            )"""
         return response
 
     def strings_ranked_by_relatedness(
