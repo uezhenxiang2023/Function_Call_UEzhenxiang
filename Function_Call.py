@@ -89,7 +89,7 @@ class FunctionRunner:
             "temperature": "30",
             "unit": unit,
             "num_days": num_days,
-            "forecast": ["rainy"],
+            "forecast": ["sunny"],
         }
         return json.dumps(forecast_info)
     
