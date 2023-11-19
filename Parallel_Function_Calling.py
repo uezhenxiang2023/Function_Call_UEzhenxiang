@@ -2,7 +2,7 @@ import json
 from openai import OpenAI
 
 client = OpenAI()
-model = 'gpt-3.5-turbo-1106'
+model = 'gpt-4-1106-preview'
 
 # Example dummy function hard coded to return the same weather
 # In production,this could be your backend API or an external API
